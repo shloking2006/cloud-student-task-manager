@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cloud-Based Student Task Manager | Lab Assignment 8</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+  <div class="container">
+    <!-- Header -->
+    <header class="app-header">
+      <div class="header-badges">
+        <span class="badge badge-accent">Cloud Computing Lab</span>
+        <span class="badge badge-subtle">Assignment 8</span>
+        <a href="{{ url_for('health') }}" target="_blank" class="badge badge-health" title="Check Service Health">
+          <span class="status-indicator"></span> Health API
+        </a>
+      </div>
+      <h1 class="app-title">Cloud-Based Student Task Manager</h1>
+      <p class="app-subtitle">
+        A cloud-native micro-application demonstrating single-worker WSGI hosting, in-memory state persistence, and RESTful service endpoints.
+      </p>
+    </header>
+
+    <!-- 404 Route Notification if triggered -->
+    {% if not_found_path %}
+    <div class="alert alert-warning" role="alert">
+      <span class="alert-icon">⚠️</span>
+      <div class="alert-body">
+        <strong>HTTP 404 - Endpoint Not Found:</strong>
+        The requested path <code>{{ not_found_path }}</code> does not exist on this server. Returned to dashboard.
+      </div>
+    </div>
+    {% endif %}
+
+    <!-- Flash Messages -->
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        <div class="flash-container">
+          {% for category, message in messages %}
+            <div class="alert alert-{{ category }}" role="alert">
+              <span class="alert-icon">
+                {% if category == 'error' %}⛔{% elif category == 'success' %}✅{% else %}ℹ️{% endif %}
+              </span>
+              <div class="alert-body">{{ message }}</div>
+            </div>
+          {% endfor %}
+        </div>
+      {% endif %}
+    {% endwith %}
+
+    <!-- Form Validation Error if any -->
+    {% if form_error %}
+    <div class="alert alert-error" role="alert">
+      <span class="alert-icon">⛔</span>
+      <div class="alert-body">
+        <strong>Validation Error:</strong> {{ form_error }}
+      </div>
+    </div>
+    {% endif %}
+
+    <!-- Metrics Dashboard -->
+    <section class="stats-grid" aria-label="Task Statistics">
+      <div class="stat-card">
+        <span class="stat-label">Total Tasks</span>
+        <span class="stat-value">{{ stats.total }}</span>
+      </div>
+      <div class="stat-card">
+        <span class="stat-label">Pending</span>
+        <span class="stat-value text-amber">{{ stats.pending }}</span>
+      </div>
+      <div class="stat-card">
+        <span class="stat-label">Completed</span>
+        <span class="stat-value text-emerald">{{ stats.completed }}</span>
+      </div>
+      <div class="stat-card">
+        <span class="stat-label">Progress</span>
+        <span class="stat-value">{{ stats.percent }}%</span>
+      </div>
+    </section>
+
+    <!-- Progress Bar -->
+    <div class="progress-container" aria-hidden="true">
+      <div class="progress-bar" style="width: {{ stats.percent }}%;"></div>
+    </div>
+
+    <!-- Task Creation Form Card -->
+    <section class="card form-card">
+      <h2 class="card-title">Add New Student Task</h2>
+      <form id="task-form" action="{{ url_for('add_task') }}" method="POST" novalidate>
+        <div class="form-group">
+          <label for="task-input" class="form-label">
+            Task Description
+            <span class="char-counter" id="char-counter">0 / 120</span>
+          </label>
+          <div class="input-row">
+            <input
+              type="text"
+              id="task-input"
+              name="title"
+              class="form-input"
+              placeholder="e.g., Read Cloud Computing Lecture 8 Slides..."
+              maxlength="120"
+              required
+              autofocus
+            >
+            <button type="submit" class="btn btn-primary" id="submit-btn">
+              <span>+ Add Task</span>
+            </button>
+          </div>
+          <p class="form-helper">
+            Requirements: Non-empty, max 120 characters. Safe Jinja-escaped rendering.
+          </p>
+        </div>
+      </form>
+    </section>
+
+    <!-- Task List Section -->
+    <section class="card list-card" aria-label="Task List">
+      <div class="list-header">
+        <h2 class="card-title">Task List ({{ stats.total }})</h2>
+        {% if stats.total > 0 %}
+        <span class="list-badge">{{ stats.pending }} remaining</span>
+        {% endif %}
+      </div>
+
+      {% if tasks %}
+        <ul class="task-list">
+          {% for task in tasks %}
+            <li class="task-item {% if task.completed %}is-completed{% endif %}">
+              <!-- Toggle Complete / Undo Form -->
+              <form action="{{ url_for('toggle_task', task_id=task.id) }}" method="POST" class="toggle-form">
+                <button
+                  type="submit"
+                  class="checkbox-button"
+                  title="{% if task.completed %}Mark as Pending{% else %}Mark as Completed{% endif %}"
+                  aria-label="Toggle task {{ task.id }}"
+                >
+                  {% if task.completed %}
+                    <span class="check-icon">✓</span>
+                  {% else %}
+                    <span class="empty-icon"></span>
+                  {% endif %}
+                </button>
+              </form>
+
+              <!-- Task Details -->
+              <div class="task-content">
+                <span class="task-title">{{ task.title }}</span>
+                <div class="task-meta">
+                  <span class="task-id">#{{ task.id }}</span>
+                  <span class="task-time">Created {{ task.created_at }}</span>
+                  {% if task.completed %}
+                    <span class="status-pill status-pill-success">Completed</span>
+                  {% else %}
+                    <span class="status-pill status-pill-pending">Pending</span>
+                  {% endif %}
+                </div>
+              </div>
+
+              <!-- Delete Task Form -->
+              <form action="{{ url_for('delete_task', task_id=task.id) }}" method="POST" class="delete-form" onsubmit="return confirm('Are you sure you want to delete task #{{ task.id }}?');">
+                <button
+                  type="submit"
+                  class="btn btn-danger btn-sm"
+                  title="Delete Task"
+                  aria-label="Delete task {{ task.id }}"
+                >
+                  ✕
+                </button>
+              </form>
+            </li>
+          {% endfor %}
+        </ul>
+      {% else %}
+        <!-- Empty State -->
+        <div class="empty-state">
+          <div class="empty-state-icon">📋</div>
+          <h3 class="empty-state-title">No tasks available</h3>
+          <p class="empty-state-desc">
+            Your task queue is clear! Enter a student assignment, lab milestone, or study topic above to add your first task.
+          </p>
+        </div>
+      {% endif %}
+    </section>
+
+    <!-- Footer with Cloud Architecture Notes -->
+    <footer class="app-footer">
+      <div class="footer-content">
+        <p><strong>Cloud Architecture Note:</strong> Hosted on WSGI Gunicorn (Single Worker: <code>-w 1</code>) with Python thread-safe in-memory state.</p>
+        <p>Environment: <code>{{ "Development" if config.DEBUG else "Production WSGI" }}</code> • Auto-escaping active for XSS protection.</p>
+      </div>
+    </footer>
+  </div>
+
+  <!-- Minimal JavaScript for character count and dynamic feedback -->
+  <script>
+    document.addEventListener("DOMContentLoaded", () => {
+      const input = document.getElementById("task-input");
+      const counter = document.getElementById("char-counter");
+
+      if (input && counter) {
+        const updateCount = () => {
+          const len = input.value.length;
+          counter.textContent = `${len} / 120`;
+          if (len > 120) {
+            counter.classList.add("text-error");
+          } else if (len >= 100) {
+            counter.classList.add("text-warning");
+            counter.classList.remove("text-error");
+          } else {
+            counter.classList.remove("text-warning", "text-error");
+          }
+        };
+
+        input.addEventListener("input", updateCount);
+        updateCount();
+      }
+    });
+  </script>
+</body>
+</html>
